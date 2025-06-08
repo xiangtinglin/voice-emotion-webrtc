@@ -39,11 +39,12 @@ class AudioProcessor(AudioProcessorBase):
 
 # 啟動錄音
 ctx = webrtc_streamer(
-    key="speech",
-    mode="sendonly",
-    in_audio=True,
-    media_stream_constraints={"audio": True, "video": False},
-    audio_processor_factory=AudioProcessor,
+    key="example",
+    mode=WebRtcMode.SENDONLY,
+    client_settings=ClientSettings(
+        media_stream_constraints={"audio": True, "video": False},
+        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+    ),
     async_processing=True,
 )
 
