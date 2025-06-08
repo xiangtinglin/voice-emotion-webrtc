@@ -1,5 +1,5 @@
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, ClientSettings, WebRtcMode
+from streamlit_webrtc import webrtc_streamer, AudioProcessorBase
 import numpy as np
 import av
 import tempfile
@@ -40,11 +40,12 @@ class AudioProcessor(AudioProcessorBase):
 # 啟動錄音
 ctx = webrtc_streamer(
     key="speech",
-    mode=WebRtcMode.SENDONLY,
+    mode="sendonly",
     in_audio=True,
-    client_settings=client_settings,
+    media_stream_constraints={"audio": True, "video": False},
+    audio_processor_factory=AudioProcessor,
+    async_processing=True,
 )
-
 
 if ctx.audio_processor:
     st.info("🎙️ 點選 Start 開始錄音，點 Stop 結束")
