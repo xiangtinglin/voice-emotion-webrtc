@@ -43,7 +43,7 @@ def generate_response(sentiment_label):
 if st.button("🎙️ Start Talking"):
     text = recognize_from_microphone()
     if text:
-        st.success(f"你說的是："{text}"")
+        st.success(f"你說的是：\"{text}\"")
         result = sentiment_analyzer(text)[0]
         label = result["label"].lower()
         st.write(f"🧠 偵測到的情緒：**{label.upper()}**")
