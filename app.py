@@ -1,34 +1,25 @@
 import streamlit as st
 from gtts import gTTS
 import os
-import random
+from utils.response_logic import get_reply
 
-st.set_page_config(page_title="Offline Emotion Voice Chatbot")
-st.title("🎙️ Emotion Voice Chatbot (No Azure)")
-st.markdown("輸入一句英文，我會模擬情緒分析並回覆你語音！")
+st.set_page_config(page_title="Real Emotion Chatbot")
+st.title("🎙️ Real Emotion Chatbot (English)")
+st.markdown("輸入英文句子，我會分析情緒並用語音回覆你！")
 
-text_input = st.text_input("請輸入一句英文句子：", "")
+user_input = st.text_input("請輸入一句英文句子：", "")
 
 if st.button("Analyze & Respond"):
-    if not text_input:
-        st.warning("請先輸入一句英文句子")
+    if not user_input:
+        st.warning("請先輸入英文句子")
         st.stop()
 
-    # 模擬情緒分析
-    sentiment = random.choice(["positive", "neutral", "negative"])
-    st.write(f"🧠 模擬情緒分析結果：**{sentiment.upper()}**")
-
-    # 根據情緒給出固定回應
-    if sentiment == "positive":
-        reply = "I'm happy to hear that!"
-    elif sentiment == "negative":
-        reply = "I'm sorry you're feeling this way."
-    else:
-        reply = "Thanks for sharing. I'm here for you."
-
+    result, reply = get_reply(user_input)
+    st.write(f"🧠 **情緒分析：{result['label']} ({round(result['score'] * 100, 2)}%)**")
     st.write(f"🤖 機器人回應：{reply}")
 
-    # 文字轉語音（gTTS）
+    # TTS 產生語音
     tts = gTTS(reply)
-    tts.save("static/response.mp3")
-    st.audio("static/response.mp3")
+    mp3_path = "static/response.mp3"
+    tts.save(mp3_path)
+    st.audio(mp3_path)
