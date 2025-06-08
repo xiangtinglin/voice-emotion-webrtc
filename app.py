@@ -1,104 +1,85 @@
 import streamlit as st
-import streamlit.components.v1 as components
+from streamlit_webrtc import webrtc_streamer, AudioProcessorBase
+import numpy as np
+import av
 import tempfile
-import base64
-import os
-from transformers import pipeline
+import torch
+import torchaudio
+from transformers import pipeline, WhisperProcessor, WhisperForConditionalGeneration
 from gtts import gTTS
+import os
+from io import BytesIO
 
-st.set_page_config(page_title="🎤 Whisper Voice Chat", layout="centered")
-st.title("🗣️ Whisper 語音情緒聊天機器人")
+st.set_page_config(page_title="WebRTC Emotion Voice Bot")
 
-# 錄音 HTML 元件
-st.markdown("### Step 1: 錄音")
-components.html("""
-    <script>
-    let mediaRecorder;
-    let audioChunks = [];
-    let startBtn, stopBtn;
+st.title("🎤 Whisper + Emotion + TTS 聲音聊天機器人")
+st.markdown("👉 錄音、語音辨識、情緒分析、語音回應，全在網頁完成")
 
-    function createRecorderUI() {
-        const container = document.createElement("div");
+@st.cache_resource
+def load_models():
+    whisper_model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-tiny", torch_dtype=torch.float32)
+    whisper_processor = WhisperProcessor.from_pretrained("openai/whisper-tiny")
+    sentiment_pipe = pipeline("sentiment-analysis", model="cardiffnlp/twitter-roberta-base-sentiment")
+    return whisper_model, whisper_processor, sentiment_pipe
 
-        startBtn = document.createElement("button");
-        startBtn.innerText = "🎙️ 開始錄音";
-        startBtn.onclick = startRecording;
+whisper_model, whisper_processor, sentiment_pipe = load_models()
 
-        stopBtn = document.createElement("button");
-        stopBtn.innerText = "🛑 停止錄音";
-        stopBtn.onclick = stopRecording;
-        stopBtn.disabled = true;
+class AudioProcessor(AudioProcessorBase):
+    def __init__(self) -> None:
+        self.recorded_frames = []
 
-        container.appendChild(startBtn);
-        container.appendChild(stopBtn);
-        document.body.appendChild(container);
-    }
+    def recv(self, frame: av.AudioFrame) -> av.AudioFrame:
+        # 將音訊存下來
+        pcm = frame.to_ndarray().flatten().astype(np.float32) / 32768.0  # 16-bit PCM to float32
+        self.recorded_frames.append(pcm)
+        return frame
 
-    async function startRecording() {
-        audioChunks = [];
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder = new MediaRecorder(stream);
-        mediaRecorder.start();
-        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-        mediaRecorder.onstop = () => {
-            const blob = new Blob(audioChunks, { type: 'audio/wav' });
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const base64Audio = reader.result.split(',')[1];
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = '/';
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = 'audio';
-                input.value = base64Audio;
-                form.appendChild(input);
-                document.body.appendChild(form);
-                form.submit();
-            };
-            reader.readAsDataURL(blob);
-        };
-        startBtn.disabled = true;
-        stopBtn.disabled = false;
-    }
+    def get_audio(self):
+        return np.concatenate(self.recorded_frames)
 
-    function stopRecording() {
-        mediaRecorder.stop();
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
-    }
+# 啟動錄音
+ctx = webrtc_streamer(
+    key="speech",
+    mode="sendonly",
+    in_audio=True,
+    media_stream_constraints={"audio": True, "video": False},
+    audio_processor_factory=AudioProcessor,
+    async_processing=True,
+)
 
-    createRecorderUI();
-    </script>
-""", height=150)
+if ctx.audio_processor:
+    st.info("🎙️ 點選 Start 開始錄音，點 Stop 結束")
 
-# 接收音訊
-if "audio" in st.query_params:
-    audio_b64 = st.query_params["audio"][0]
-    audio_bytes = base64.b64decode(audio_b64)
+    if st.button("▶️ 分析錄音"):
+        raw_audio = ctx.audio_processor.get_audio()
+        ctx.audio_processor.recorded_frames = []
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
-        f.write(audio_bytes)
-        audio_path = f.name
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmpfile:
+            tensor = torch.tensor(raw_audio).unsqueeze(0)
+            torchaudio.save(tmpfile.name, tensor, 16000)
+            st.audio(tmpfile.name)
 
-    st.success("✅ 錄音接收成功，開始語音辨識中...")
+            # Whisper
+            waveform, _ = torchaudio.load(tmpfile.name)
+            input_features = whisper_processor(waveform.squeeze(), sampling_rate=16000, return_tensors="pt").input_features
+            predicted_ids = whisper_model.generate(input_features)
+            transcription = whisper_processor.batch_decode(predicted_ids, skip_special_tokens=True)[0]
+            st.success(f"你說的是：「{transcription}」")
 
-    # Whisper 模型
-    asr = pipeline("automatic-speech-recognition", model="openai/whisper-small")
-    result = asr(audio_path)
-    text = result["text"]
+            # Sentiment
+            sentiment = sentiment_pipe(transcription)[0]["label"].lower()
+            st.write(f"🧠 情緒分析：**{sentiment.upper()}**")
 
-    st.markdown(f"**你說的是：** {text}")
+            # Response
+            if sentiment == "positive":
+                reply = "I'm happy to hear that!"
+            elif sentiment == "negative":
+                reply = "I'm sorry you're feeling this way."
+            else:
+                reply = "Thanks for sharing."
 
-    # 情緒分析
-    clf = pipeline("sentiment-analysis")
-    sentiment = clf(text)[0]
-    st.markdown(f"**偵測到情緒：** `{sentiment['label']}`（信心值：{sentiment['score']:.2f}）")
-
-    # 回應語音
-    response = f"你聽起來有些 {sentiment['label']}，要不要聊聊呢？"
-    tts = gTTS(response, lang='zh')
-    tts_path = os.path.join(tempfile.gettempdir(), "response.mp3")
-    tts.save(tts_path)
-
-    st.audio(tts_path)
+            st.write(f"🤖 回應：{reply}")
+            tts = gTTS(reply)
+            tts_path = os.path.join("static", "response.mp3")
+            tts.save(tts_path)
+            st.audio(tts_path)
