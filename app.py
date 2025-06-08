@@ -1,49 +1,42 @@
 import streamlit as st
+from streamlit_audio_recorder import audio_recorder
 import tempfile
-import os
+import torchaudio
 from transformers import pipeline
 from gtts import gTTS
+import os
 
-st.title("🎤 Whisper 語音情緒聊天機器人 (無需 Azure)")
+st.set_page_config(page_title="🎤 Voice Emotion Chatbot", layout="centered")
+st.title("🎙️ Voice Emotion Chatbot Demo")
 
-st.markdown("請錄音後送出語音，我們會將語音轉文字、分析情緒並以語音回覆你。")
+# 錄音區塊
+st.markdown("## Step 1: 請錄音")
+audio_bytes = audio_recorder(pause_threshold=3.0)
 
-# 錄音元件 (網頁錄音)
-audio_bytes = st.file_uploader("上傳你的語音 (.wav/.mp3)", type=["wav", "mp3"])
+# 如果有錄到聲音
+if audio_bytes:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+        tmp.write(audio_bytes)
+        audio_path = tmp.name
 
-if audio_bytes is not None:
-    # 儲存成臨時檔
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_audio:
-        tmp_audio.write(audio_bytes.read())
-        tmp_path = tmp_audio.name
+    st.success("✅ 錄音完成，開始辨識中...")
 
-    # 語音辨識（Whisper）
-    with st.spinner("語音辨識中..."):
-        whisper = pipeline("automatic-speech-recognition", model="openai/whisper-small")
-        result = whisper(tmp_path)
-        text = result["text"]
+    # Whisper 語音辨識
+    pipe = pipeline("automatic-speech-recognition", model="openai/whisper-small")
+    result = pipe(audio_path)
+    text = result["text"]
+    st.markdown(f"**你說的是：** {text}")
 
-    st.success(f"你說的是：{text}")
+    # 情緒分析
+    classifier = pipeline("sentiment-analysis")
+    sentiment = classifier(text)[0]
+    st.markdown(f"**偵測到的情緒：** `{sentiment['label']}`（信心值：{sentiment['score']:.2f}）")
 
-    # 情緒分析（情感分類）
-    with st.spinner("情緒分析中..."):
-        classifier = pipeline("sentiment-analysis")
-        result = classifier(text)[0]
-        label = result['label']
-        score = result['score']
-        st.write(f"情緒判定：{label}（信心值 {score:.2f}）")
-
-    # 回應文字
-    reply_text = f"你聽起來是 {label} 的情緒，我會記住你的感受。"
-
-    # 文字轉語音 TTS
-    tts = gTTS(reply_text, lang='zh')
-    tts_path = os.path.join(tempfile.gettempdir(), "reply.mp3")
+    # 回應語音
+    response = f"你聽起來有點 {sentiment['label']}，一切還好嗎？"
+    tts = gTTS(response, lang="zh")
+    tts_path = os.path.join(tempfile.gettempdir(), "response.mp3")
     tts.save(tts_path)
 
-    # 播放語音
-    with open(tts_path, "rb") as audio_file:
-        audio_bytes = audio_file.read()
-        st.audio(audio_bytes, format="audio/mp3")
-
-    st.markdown("🔁 可以重新錄音再試一次。")
+    st.markdown("### 語音回應：")
+    st.audio(tts_path)
