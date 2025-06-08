@@ -1,5 +1,2 @@
 streamlit
-speechrecognition
-transformers
-torch
-gtts
+gTTS
