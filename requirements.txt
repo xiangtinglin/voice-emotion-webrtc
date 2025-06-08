@@ -1,6 +1,5 @@
 streamlit
-streamlit-webrtc
+speechrecognition
 transformers
 torch
-torchaudio
 gtts
