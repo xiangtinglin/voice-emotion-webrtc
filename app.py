@@ -1,5 +1,5 @@
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, AudioProcessorBase
+from streamlit_webrtc import webrtc_streamer, ClientSettings, WebRtcMode
 import numpy as np
 import av
 import tempfile
