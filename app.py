@@ -40,12 +40,11 @@ class AudioProcessor(AudioProcessorBase):
 # 啟動錄音
 ctx = webrtc_streamer(
     key="speech",
-    mode="sendonly",
+    mode=WebRtcMode.SENDONLY,
     in_audio=True,
-    media_stream_constraints={"audio": True, "video": False},
-    audio_processor_factory=AudioProcessor,
-    async_processing=True,
+    client_settings=client_settings,
 )
+
 
 if ctx.audio_processor:
     st.info("🎙️ 點選 Start 開始錄音，點 Stop 結束")
