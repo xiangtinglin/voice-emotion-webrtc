@@ -73,8 +73,8 @@ components.html("""
 """, height=150)
 
 # 接收音訊
-if "audio" in st.experimental_get_query_params():
-    audio_b64 = st.experimental_get_query_params()["audio"][0]
+if "audio" in st.query_params:
+    audio_b64 = st.query_params["audio"][0]
     audio_bytes = base64.b64decode(audio_b64)
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
